@@ -1,9 +1,4 @@
 /*
- * I2C-Generator: 0.3.0
- * Yaml Version: 2.1.3
- * Template Version: 0.7.0-112-g190ecaa
- */
-/*
  * Copyright (c) 2021, Sensirion AG
  * All rights reserved.
  *
@@ -37,212 +32,100 @@
 #include <Arduino.h>
 #include <SensirionI2CSen5x.h>
 #include <Wire.h>
+#include "sen55.h"
+#include <M5Unified.h>ı
 
 // The used commands use up to 48 bytes. On some Arduino's the default buffer
 // space is not large enough
 #define MAXBUF_REQUIREMENT 48
 
-#if (defined(I2C_BUFFER_LENGTH) &&                 \
-     (I2C_BUFFER_LENGTH >= MAXBUF_REQUIREMENT)) || \
-    (defined(BUFFER_LENGTH) && BUFFER_LENGTH >= MAXBUF_REQUIREMENT)
+#if (defined(I2C_BUFFER_LENGTH) &&				 \
+	(I2C_BUFFER_LENGTH >= MAXBUF_REQUIREMENT)) || \
+	(defined(BUFFER_LENGTH) && BUFFER_LENGTH >= MAXBUF_REQUIREMENT)
 #define USE_PRODUCT_INFO
 #endif
 
 SensirionI2CSen5x sen5x;
 
-void printModuleVersions() {
-    uint16_t error;
-    char errorMessage[256];
-
-    unsigned char productName[32];
-    uint8_t productNameSize = 32;
-
-    error = sen5x.getProductName(productName, productNameSize);
-
-    if (error) {
-        Serial.print("Error trying to execute getProductName(): ");
-        errorToString(error, errorMessage, 256);
-        Serial.println(errorMessage);
-    } else {
-        Serial.print("ProductName:");
-        Serial.println((char*)productName);
-    }
-
-    uint8_t firmwareMajor;
-    uint8_t firmwareMinor;
-    bool firmwareDebug;
-    uint8_t hardwareMajor;
-    uint8_t hardwareMinor;
-    uint8_t protocolMajor;
-    uint8_t protocolMinor;
-
-    error = sen5x.getVersion(firmwareMajor, firmwareMinor, firmwareDebug,
-                             hardwareMajor, hardwareMinor, protocolMajor,
-                             protocolMinor);
-    if (error) {
-        Serial.print("Error trying to execute getVersion(): ");
-        errorToString(error, errorMessage, 256);
-        Serial.println(errorMessage);
-    } else {
-        Serial.print("Firmware: ");
-        Serial.print(firmwareMajor);
-        Serial.print(".");
-        Serial.print(firmwareMinor);
-        Serial.print(", ");
-
-        Serial.print("Hardware: ");
-        Serial.print(hardwareMajor);
-        Serial.print(".");
-        Serial.println(hardwareMinor);
-    }
-}
-
-void printSerialNumber() {
-    uint16_t error;
-    char errorMessage[256];
-    unsigned char serialNumber[32];
-    uint8_t serialNumberSize = 32;
-
-    error = sen5x.getSerialNumber(serialNumber, serialNumberSize);
-    if (error) {
-        Serial.print("Error trying to execute getSerialNumber(): ");
-        errorToString(error, errorMessage, 256);
-        Serial.println(errorMessage);
-    } else {
-        Serial.print("SerialNumber:");
-        Serial.println((char*)serialNumber);
-    }
-}
-
 void setup() {
+	Serial.begin(115200);
+	Wire.begin();
+	sen5x.begin(Wire);
+	M5.begin();
 
-    Serial.begin(115200);
-    while (!Serial) {
-        delay(100);
-    }
+	uint16_t error;
+	error = sen5x.deviceReset();
+	if (error) printSen55ErrorMessage("Error trying to execute deviceReset():", error);
 
-    Wire.begin();
-
-    sen5x.begin(Wire);
-
-    uint16_t error;
-    char errorMessage[256];
-    error = sen5x.deviceReset();
-    if (error) {
-        Serial.print("Error trying to execute deviceReset(): ");
-        errorToString(error, errorMessage, 256);
-        Serial.println(errorMessage);
-    }
-
-// Print SEN55 module information if i2c buffers are large enough
 #ifdef USE_PRODUCT_INFO
-    printSerialNumber();
-    printModuleVersions();
+	printSen55SerialNumber();
+	printSen55ModuleVersions();
 #endif
 
-    // set a temperature offset in degrees celsius
-    // Note: supported by SEN54 and SEN55 sensors
-    // By default, the temperature and humidity outputs from the sensor
-    // are compensated for the modules self-heating. If the module is
-    // designed into a device, the temperature compensation might need
-    // to be adapted to incorporate the change in thermal coupling and
-    // self-heating of other device components.
-    //
-    // A guide to achieve optimal performance, including references
-    // to mechanical design-in examples can be found in the app note
-    // “SEN5x – Temperature Compensation Instruction” at www.sensirion.com.
-    // Please refer to those application notes for further information
-    // on the advanced compensation settings used
-    // in `setTemperatureOffsetParameters`, `setWarmStartParameter` and
-    // `setRhtAccelerationMode`.
-    //
-    // Adjust tempOffset to account for additional temperature offsets
-    // exceeding the SEN module's self heating.
-    float tempOffset = 0.0;
-    error = sen5x.setTemperatureOffsetSimple(tempOffset);
-    if (error) {
-        Serial.print("Error trying to execute setTemperatureOffsetSimple(): ");
-        errorToString(error, errorMessage, 256);
-        Serial.println(errorMessage);
-    } else {
-        Serial.print("Temperature Offset set to ");
-        Serial.print(tempOffset);
-        Serial.println(" deg. Celsius (SEN54/SEN55 only");
-    }
+	float tempOffset = 0.0;
+	error = sen5x.setTemperatureOffsetSimple(tempOffset);
+	if (error) printSen55ErrorMessage("Error trying to execute setTemperatureOffsetSimple():", error);
+	else {
+		printf("Temperature Offset set to %f[degC]\n", tempOffset);
+	}
 
-    // Start Measurement
-    error = sen5x.startMeasurement();
-    if (error) {
-        Serial.print("Error trying to execute startMeasurement(): ");
-        errorToString(error, errorMessage, 256);
-        Serial.println(errorMessage);
-    }
+	// Start Measurement
+	error = sen5x.startMeasurement();
+	if (error) printSen55ErrorMessage("Error trying to execute startMeasurement():", error);
 }
 
+uint16_t px = 0;
+#define X 320
+uint16_t val[X][8]; // 8 values: PM1.0, PM2.5, PM4.0, PM10.0, RH, T, VOC, NOx
+uint16_t color[] = {RED, PURPLE, MAGENTA, ORANGE, CYAN, YELLOW, GREEN, BLUE};
+
+uint16_t conv_value(float value, float min, float max) {
+	int16_t v = (value - min) / (max - min) * 65535;
+	if (v < min) v = min;
+	else if (v > max) v = max;
+	return(v);
+}	
+
 void loop() {
-    uint16_t error;
-    char errorMessage[256];
+  uint16_t error;
 
-    delay(1000);
+	delay(1000); // sensor sampling: per 1s
 
-    // Read Measurement
-    float massConcentrationPm1p0;
-    float massConcentrationPm2p5;
-    float massConcentrationPm4p0;
-    float massConcentrationPm10p0;
-    float ambientHumidity;
-    float ambientTemperature;
-    float vocIndex;
-    float noxIndex;
+	float massConcentrationPm1p0, massConcentrationPm2p5, massConcentrationPm4p0, massConcentrationPm10p0, ambientHumidity, ambientTemperature, vocIndex, noxIndex;
 
-    error = sen5x.readMeasuredValues(
-        massConcentrationPm1p0, massConcentrationPm2p5, massConcentrationPm4p0,
-        massConcentrationPm10p0, ambientHumidity, ambientTemperature, vocIndex,
-        noxIndex);
+	error = sen5x.readMeasuredValues(
+		massConcentrationPm1p0, massConcentrationPm2p5, massConcentrationPm4p0, massConcentrationPm10p0,
+		ambientHumidity, ambientTemperature, vocIndex, noxIndex);
 
-    if (error) {
-        Serial.print("Error trying to execute readMeasuredValues(): ");
-        errorToString(error, errorMessage, 256);
-        Serial.println(errorMessage);
-    } else {
-        Serial.print("MassConcentrationPm1p0:");
-        Serial.print(massConcentrationPm1p0);
-        Serial.print("\t");
-        Serial.print("MassConcentrationPm2p5:");
-        Serial.print(massConcentrationPm2p5);
-        Serial.print("\t");
-        Serial.print("MassConcentrationPm4p0:");
-        Serial.print(massConcentrationPm4p0);
-        Serial.print("\t");
-        Serial.print("MassConcentrationPm10p0:");
-        Serial.print(massConcentrationPm10p0);
-        Serial.print("\t");
-        Serial.print("AmbientHumidity:");
-        if (isnan(ambientHumidity)) {
-            Serial.print("n/a");
-        } else {
-            Serial.print(ambientHumidity);
-        }
-        Serial.print("\t");
-        Serial.print("AmbientTemperature:");
-        if (isnan(ambientTemperature)) {
-            Serial.print("n/a");
-        } else {
-            Serial.print(ambientTemperature);
-        }
-        Serial.print("\t");
-        Serial.print("VocIndex:");
-        if (isnan(vocIndex)) {
-            Serial.print("n/a");
-        } else {
-            Serial.print(vocIndex);
-        }
-        Serial.print("\t");
-        Serial.print("NoxIndex:");
-        if (isnan(noxIndex)) {
-            Serial.println("n/a");
-        } else {
-            Serial.println(noxIndex);
-        }
-    }
+	// value range:
+	// VOX, NOX: 1-500 (10-30sec) [index]
+	// massConcentration: 0-1000 [ug/m3]
+
+	if (error) printSen55ErrorMessage("Error trying to execute readMeasuredValues():", error);
+	else {
+		printf("%f,%f,%f,%f,", massConcentrationPm1p0, massConcentrationPm2p5, massConcentrationPm4p0, massConcentrationPm10p0);
+	  if (isnan(ambientHumidity)) printf("n/a,"); else printf("%f, ", ambientHumidity);
+	  if (isnan(ambientTemperature)) printf("n/a,"); else printf("%f, ", ambientTemperature);
+	  if (isnan(vocIndex)) printf("n/a,"); else printf("%f, ", vocIndex);
+	  if (isnan(noxIndex)) printf("n/a\n"); else printf("%f\n", noxIndex);
+		val[px][0] = conv_value(massConcentrationPm1p0, 0, 1000);
+		val[px][1] = conv_value(massConcentrationPm2p5, 0, 1000);
+		val[px][2] = conv_value(massConcentrationPm4p0, 0, 1000);
+		val[px][3] = conv_value(massConcentrationPm10p0, 0, 1000);
+		val[px][4] = conv_value(ambientHumidity, 0, 100);
+		val[px][5] = conv_value(ambientTemperature, 0, 100);
+		val[px][6] = conv_value(vocIndex, 1, 500);
+		val[px][6] = conv_value(noxIndex, 1, 500);
+		px = (px + 1) % X;
+		uint16_t x, p;
+		p = px;
+		for (x = 0; x < X; x++){
+			uint8_t t = 0;
+			M5.Display.drawFastVLine(x, 0, 240, BLACK);
+			for (t = 0; t < 8; t++) {
+				M5.Display.drawPixel(x, 240 - val[p][t], color[t]);
+			}
+			p = (p + 1) % X;
+		}
+	}
 }
