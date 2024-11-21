@@ -98,8 +98,8 @@ void loop() {
 		ambientHumidity, ambientTemperature, vocIndex, noxIndex);
 
 	// value range:
-	// VOX, NOX: 1-500 (10-30sec) [index]
 	// massConcentration: 0-1000 [ug/m3]
+	// VOX, NOX: 1-500 (10-30sec) [index]
 
 	if (error) printSen55ErrorMessage("Error trying to execute readMeasuredValues():", error);
 	else {
@@ -123,7 +123,9 @@ void loop() {
 			uint8_t t = 0;
 			M5.Display.drawFastVLine(x, 0, 240, BLACK);
 			for (t = 0; t < 8; t++) {
-				M5.Display.drawPixel(x, 240 - val[p][t], color[t]);
+				if (t < 4 || (t >= 4 && !isnan(val[px][t]))){
+					M5.Display.drawPixel(x, 240 - val[p][t], color[t]);
+				}
 			}
 			p = (p + 1) % X;
 		}
