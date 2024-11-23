@@ -33,7 +33,7 @@
 #include <SensirionI2CSen5x.h>
 #include <Wire.h>
 #include "sen55.h"
-#include <M5Unified.h>ı
+#include <M5Unified.h>
 
 // The used commands use up to 48 bytes. On some Arduino's the default buffer
 // space is not large enough
@@ -77,10 +77,10 @@ void setup() {
 uint16_t px = 0;
 #define X 320
 uint16_t val[X][8]; // 8 values: PM1.0, PM2.5, PM4.0, PM10.0, RH, T, VOC, NOx
-uint16_t color[] = {RED, PURPLE, MAGENTA, ORANGE, CYAN, YELLOW, GREEN, BLUE};
+uint16_t color[] = {RED, PURPLE, MAGENTA, ORANGE, CYAN, YELLOW, GREEN, SKYBLUE};
 
 uint16_t conv_value(float value, float min, float max) {
-	int16_t v = (value - min) / (max - min) * 65535;
+	int16_t v = (value - min) / (max - min) * 240;
 	if (v < min) v = min;
 	else if (v > max) v = max;
 	return(v);
@@ -122,12 +122,26 @@ void loop() {
 		for (x = 0; x < X; x++){
 			uint8_t t = 0;
 			M5.Display.drawFastVLine(x, 0, 240, BLACK);
-			for (t = 0; t < 8; t++) {
+			M5.Display.drawPixel(x, 120, LIGHTGREY);
+			if (x % 4 == 0){
+				M5.Display.drawPixel(x, 60, LIGHTGREY);
+				M5.Display.drawPixel(x, 180, LIGHTGREY);
+			}
+			for (t = 4; t < 8; t++) {
 				if (t < 4 || (t >= 4 && !isnan(val[px][t]))){
 					M5.Display.drawPixel(x, 240 - val[p][t], color[t]);
 				}
 			}
 			p = (p + 1) % X;
 		}
+		M5.Lcd.setCursor(0,0);
+		M5.Lcd.setTextColor(color[0]); M5.Lcd.printf("PM10(0-1000)\n");
+		M5.Lcd.setTextColor(color[1]); M5.Lcd.printf("PM2.5(0-1000)\n");
+		M5.Lcd.setTextColor(color[2]); M5.Lcd.printf("PM40(0-1000)\n");
+		M5.Lcd.setTextColor(color[3]); M5.Lcd.printf("PM10(0-1000)\n");
+		M5.Lcd.setTextColor(color[4]); M5.Lcd.printf("Hum(0-100)\n");
+		M5.Lcd.setTextColor(color[5]); M5.Lcd.printf("Temp(0-100)\n");
+		M5.Lcd.setTextColor(color[6]); M5.Lcd.printf("VOX(1-500)\n");
+		M5.Lcd.setTextColor(color[7]); M5.Lcd.printf("NOx(1-500)\n");
 	}
 }
