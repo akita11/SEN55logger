@@ -34,6 +34,7 @@
 #include <Wire.h>
 #include "sen55.h"
 #include <M5Unified.h>
+#include <SD.h>
 
 // The used commands use up to 48 bytes. On some Arduino's the default buffer
 // space is not large enough
@@ -47,11 +48,38 @@
 
 SensirionI2CSen5x sen5x;
 
+File logFile;
+uint32_t t0 = 0;
+
+#define LOG_FILENAME "/log.csv"
+bool fLogging = false;
+
+void ShowStatus(){
+	M5.Display.fillRect(200, 0, 120, 20, BLACK);
+	M5.Display.setCursor(200, 0);
+	if (fLogging == true){
+		M5.Lcd.setTextColor(GREEN);
+		M5.Display.printf("Logging");
+	}
+	else{
+		M5.Lcd.setTextColor(RED);
+		M5.Display.printf("Stopped");
+	}
+}
+
 void setup() {
 	Serial.begin(115200);
 	Wire.begin();
 	sen5x.begin(Wire);
 	M5.begin();
+
+	SPI.begin();
+  	while(false == 	SD.begin(GPIO_NUM_4, SPI, 15000000)){
+		M5.Display.setCursor(200, 0);
+		M5.Display.println("no SD");
+		delay(500);
+	}
+	ShowStatus();
 
 	uint16_t error;
 	error = sen5x.deviceReset();
@@ -88,8 +116,6 @@ uint16_t conv_value(float value, float min, float max) {
 
 void loop() {
   uint16_t error;
-
-	delay(1000); // sensor sampling: per 1s
 
 	float massConcentrationPm1p0, massConcentrationPm2p5, massConcentrationPm4p0, massConcentrationPm10p0, ambientHumidity, ambientTemperature, vocIndex, noxIndex;
 
@@ -143,5 +169,31 @@ void loop() {
 		M5.Lcd.setTextColor(color[5]); M5.Lcd.printf("Temp(0-100)\n");
 		M5.Lcd.setTextColor(color[6]); M5.Lcd.printf("VOX(1-500)\n");
 		M5.Lcd.setTextColor(color[7]); M5.Lcd.printf("NOx(1-500)\n");
+		ShowStatus();
+		uint32_t tm = millis() - t0;
+		logFile.printf("%d,%f,%f,%f,%f,%f,%f,%f,%f\n", tm, massConcentrationPm1p0, massConcentrationPm2p5, massConcentrationPm4p0,
+			massConcentrationPm10p0, ambientHumidity, ambientTemperature, vocIndex, noxIndex);
 	}
+	for (uint8_t i = 0; i < 100; i++){
+		M5.update();
+		if (M5.BtnA.wasClicked()){
+			if (fLogging == false){
+				t0 = millis();
+				fLogging = true;
+				logFile = SD.open(LOG_FILENAME, "a");
+				logFile.printf("time[ms],PM10,PM2.5,PM40,PM10,Hum,Temp,VOX,NOx\n");
+				i = 100;
+				ShowStatus();
+			}
+			else{
+				logFile.close();
+				fLogging = false;
+				i = 100;
+				ShowStatus();
+			}
+		}
+	    delay(10);
+	}
+
+
 }
